@@ -136,7 +136,7 @@ void initWB()
 	bias.resize(biasSize);
 
 	// weights
-	std::fstream weightsfile("D:/visual_studio/cudaNeuralNet/cudaNeuralNet/weights/weights.txt", std::ios::in);
+	std::fstream weightsfile("weights/weights.txt", std::ios::in);
 	if (!weightsfile.is_open())
 	{
 		std::cerr << "Error opening weights file" << std::endl;
@@ -153,7 +153,7 @@ void initWB()
 	weightsfile.close();
 
 	// bias
-	std::fstream biasfile("D:/visual_studio/cudaNeuralNet/cudaNeuralNet/weights/bias.txt", std::ios::in);
+	std::fstream biasfile("weights/bias.txt", std::ios::in);
 	if (!biasfile.is_open())
 	{
 		std::cerr << "Error opening bias file" << std::endl;
