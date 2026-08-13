@@ -16,6 +16,9 @@
 #include <device_launch_parameters.h>
 #include <numeric>
 #include <cmath>
+
+
+
 int threads=256;
 int blocks(int n){
 return (n + threads - 1) / threads;
@@ -25,8 +28,8 @@ struct Model
 {
 	float lr = 0.1f;
 	int inputnode = 28 * 28;
-	int outputnode = 9;
-	int batchsize = 32;
+	int outputnode = 20;
+	int batchsize = 64;
 	float outputbias = 0.0f;
 	float outval = 0.0f;
 };
@@ -52,8 +55,8 @@ std::vector<Layer> layer;
 std::vector<float> weights;
 std::vector<float> bias;
 std::vector<float> guesses;
-std::vector<const char*> names={"circle", "square", "triangle", "star", "house",
-        "tree", "sun", "fish", "flower"};
+std::vector<std::string> names;
+
 int layers = 0;
 int weightsBufferSize = 0;
 int nodeDataSize = 0;
@@ -62,10 +65,10 @@ double mousex, mousey;
 double prevmousex = 0, prevmousey = 0;
 double dmx = 0, dmy = 0;
 float radius = 1.0f;
-constexpr float TRAINING_INPUT_MEAN = 39.8232f;
-constexpr float TRAINING_INPUT_STDDEV = 80.4317f;
-constexpr int PREPROCESS_TARGET_SIZE = 24;
-
+constexpr float TRAINING_INPUT_MEAN = 43.187618f;
+constexpr float TRAINING_INPUT_STDDEV = 81.460342f;
+constexpr int PREPROCESS_TARGET_SIZE = 28;
+//mean: 43.187618, stddev: 81.460342
 void addlayer(int in, int out)
 {
 	Layer l;
@@ -96,12 +99,12 @@ void setoffsets()
 void initlayers()
 {
 
-	addlayer(model.inputnode, 512);
-	addlayer(512, 512);
+		addlayer(model.inputnode, 512);
 	addlayer(512, 256);
 	addlayer(256, 128);
 	addlayer(128, 64);
 	addlayer(64, model.outputnode);
+	
 
 	setoffsets();
 }
@@ -134,9 +137,23 @@ void initWB()
 	weights.resize(weightsBufferSize);
 
 	bias.resize(biasSize);
+	//names.resize(model.outputnode);
+
+
+std::fstream namesfile("w2/labels.txt", std::ios::in);
+	if (!namesfile.is_open())
+	{
+		std::cerr << "Error opening label file" << std::endl;
+	}
+	std::string name;
+	while(namesfile>> name){
+		if (!name.empty()) {
+			names.push_back(name);
+		}
+	}
 
 	// weights
-	std::fstream weightsfile("weights/weights.txt", std::ios::in);
+	std::fstream weightsfile("w2/weights.txt", std::ios::in);
 	if (!weightsfile.is_open())
 	{
 		std::cerr << "Error opening weights file" << std::endl;
@@ -153,7 +170,7 @@ void initWB()
 	weightsfile.close();
 
 	// bias
-	std::fstream biasfile("weights/bias.txt", std::ios::in);
+	std::fstream biasfile("w2/bias.txt", std::ios::in);
 	if (!biasfile.is_open())
 	{
 		std::cerr << "Error opening bias file" << std::endl;
@@ -171,7 +188,6 @@ void initWB()
 	{
 		printf("outdated data delete old weights and bias\n");
 
-		return;
 	}
 }
 void initgpu()
@@ -180,13 +196,13 @@ void initgpu()
 	cudaMalloc(&dWeights, weightsBufferSize * sizeof(float));
 	cudaMalloc(&dBias, biasSize * sizeof(float));
 	cudaMalloc(&dNodeData, nodeDataSize * sizeof(float));
-	cudaMalloc(&data, 28 * 28 * sizeof(uint8_t));
-	cudaMalloc(&inputs, 28 * 28 * sizeof(float));
+	cudaMalloc(&data, pixelX * pixelY * sizeof(uint8_t));
+	cudaMalloc(&inputs, pixelX * pixelY * sizeof(float));
 
 	cudaMemcpy(dWeights, weights.data(), weightsBufferSize * sizeof(float), cudaMemcpyHostToDevice);
 	cudaMemcpy(dBias, bias.data(), biasSize * sizeof(float), cudaMemcpyHostToDevice);
-	cudaMemset(data, 0, 28 * 28 * sizeof(uint8_t));
-	cudaMemset(inputs, 0, 28 * 28 * sizeof(float));
+	cudaMemset(data, 0, pixelX * pixelY * sizeof(uint8_t));
+	cudaMemset(inputs, 0, pixelX * pixelY * sizeof(float));
 	cudaError_t err = cudaGetLastError();
 	if (err)
 	{
@@ -297,7 +313,7 @@ void render(){
 	cudaCreateSurfaceObject(&surf, &desc);
 	dim3 blocks(16, 16);
 	dim3 grid((pixelX + 15) / 16, (pixelY + 15) / 16);
-	texkernel<<<grid, blocks>>>(surf, 28, 28, data);
+	texkernel<<<grid, blocks>>>(surf, pixelX, pixelY, data);
 	cudaError_t err = cudaGetLastError();
 	if (err)
 	{
@@ -454,16 +470,26 @@ cudaError_t err = cudaGetLastError();
 
 void showranked()
 {
+	//for(int i=0;i< guesses.size();i++){
+		//tmean: 169.500000, tstddev: 98.152924
+		//125= -0.45337
+		//76 = -0.9526
+
+	//	guesses[i]= (guesses[i]* 98.152924f) + 169.5f;
+	//}
     int n = model.outputnode;
+
+
+	
     std::vector<int> idx(n);
     std::iota(idx.begin(), idx.end(), 0);
     std::sort(idx.begin(), idx.end(), [&](int a, int b){ return guesses[a] > guesses[b]; });
 
-    ImGui::Text("Best: %s", names[idx[0]]);
+    ImGui::Text("Best: %s", names[idx[0]].c_str());
 
-    for (int i : idx) {
+     for (int i : idx) {
         float score = std::clamp(guesses[i], 0.0f, 1.0f) * 100.f;
-        ImGui::Text("%s: %.1f%% (raw %.3f)", names[i], score, guesses[i]);
+        ImGui::Text("%s: %.1f%% (raw %.3f)", names[i].c_str(), score, guesses[i]);
     }
 }
 
@@ -515,12 +541,13 @@ int main()
 		processinput(noRender.getwindowid());
 		render();
 		runnet();
-		
+
 		ImGui_ImplOpenGL3_NewFrame();
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();
 
 		ImGui::Begin("output");
+		ImGui::DragFloat("radius ",&radius,0.1f,1.0f,10.0f);
 		showranked();
 
 		ImGui::End();
